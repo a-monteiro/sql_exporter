@@ -81,10 +81,12 @@ func PingDB(ctx context.Context, conn *sql.DB) error {
 // which most likely contains a password. It's undesired here.
 func safeParse(rawURL string) (*dburl.URL, error) {
 	parsed, err := dburl.Parse(rawURL)
+	//klog.Infof("parsed url: %v", parsed)
 	if err != nil {
 		if uerr := new(url.Error); errors.As(err, &uerr) {
 			return nil, uerr.Err
 		}
+		//return nil, err
 		return nil, errors.New("invalid URL")
 	}
 	return parsed, nil
