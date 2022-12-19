@@ -1,19 +1,32 @@
-ARG  ARCH="amd64"
-ARG  OS="linux"
-FROM quay.io/prometheus/golang-builder AS builder
+FROM golang:1.18 AS builder
 
-# Get sql_exporter
-ADD .   /go/src/github.com/burningalchemist/sql_exporter
-WORKDIR /go/src/github.com/burningalchemist/sql_exporter
+ENV USER=app
+ENV UID=10001
+# See https://stackoverflow.com/a/55757473/12429735RUN
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    "${USER}"
 
-# Do makefile
-RUN make
+ADD .   /go/src/github.com/a-monteiro/sql_exporter
+WORKDIR /go/src/github.com/a-monteiro/sql_exporter
+
+RUN make drivers-custom
+RUN make build
+RUN chmod +x ./sql_exporter
 
 # Make image and copy build sql_exporter
-FROM        quay.io/prometheus/busybox-${OS}-${ARCH}:latest
-LABEL       maintainer="The Prometheus Authors <prometheus-developers@googlegroups.com>"
-COPY        --from=builder /go/src/github.com/burningalchemist/sql_exporter/sql_exporter  /bin/sql_exporter
+FROM scratch
 
-EXPOSE      9399
-USER        nobody
-ENTRYPOINT  [ "/bin/sql_exporter" ]
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /go/src/github.com/a-monteiro/sql_exporter/sql_exporter /bin/sql_exporter
+
+EXPOSE 9100
+USER app:app
+ENTRYPOINT [ "/bin/sql_exporter" ]
