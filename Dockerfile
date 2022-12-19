@@ -25,7 +25,7 @@ FROM scratch
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /go/src/github.com/a-monteiro/sql_exporter/sql_exporter /bin/sql_exporter
+COPY --from=builder /go/src/github.com/a-monteiro/sql_exporter/sql_exporter  /bin/sql_exporter
 
 EXPOSE 9100
 USER app:app
