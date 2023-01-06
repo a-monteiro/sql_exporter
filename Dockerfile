@@ -15,7 +15,7 @@ RUN adduser \
 ADD .   /go/src/github.com/a-monteiro/sql_exporter
 WORKDIR /go/src/github.com/a-monteiro/sql_exporter
 
-RUN make drivers-custom
+#RUN make drivers-custom
 RUN make build
 RUN chmod +x ./sql_exporter
 
