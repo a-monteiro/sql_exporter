@@ -2,4 +2,7 @@
 
 package sql_exporter
 
-import _ "github.com/databricks/databricks-sql-go"
+import (
+	_ "github.com/databricks/databricks-sql-go"
+	_ "github.com/trinodb/trino-go-client/trino"
+)

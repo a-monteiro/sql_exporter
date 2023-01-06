@@ -5,8 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-
-	. "github.com/dave/jennifer/jen"
 )
 
 const (
@@ -28,6 +26,7 @@ var driverList = map[string][]string{
 	},
 	"custom": {
 		//"github.com/mithrandie/csvq-driver",
+		"github.com/trinodb/trino-go-client/trino",
 		"github.com/databricks/databricks-sql-go",
 	},
 }
