@@ -1,0 +1,223 @@
+# -- Provide a name in place of `sql-exporter`
+nameOverride: ""
+# -- String to fully override "sql-exporter.fullname"
+fullnameOverride: ""
+image:
+  # -- Image repository
+  repository: burningalchemist/sql_exporter
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag
+  # @default -- `appVersion` value from `Chart.yaml`
+  tag: ""
+# -- Secrets with credentials to pull images from a private registry
+imagePullSecrets: []
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 80
+  # -- Service labels
+  labels: {}
+  # -- Service annotations
+  annotations: {}
+    # example of prometheus usage
+    # prometheus.io/scrape: "true"
+    # prometheus.io/path: "/metrics"
+ingress:
+  enabled: false
+  # -- Ingress labels
+  labels: {}
+  # -- Ingress annotations
+  annotations: {}
+  # -- Ingress class name
+  ingressClassName: ""
+  # -- Ingress host
+  host: ""
+  # -- Ingress path
+  path: "/"
+  # -- Ingress TLS, can be defined by cert secret, or by key and cert.
+  tls:
+    enabled: false
+    # -- Ingress tls secret if already exists.
+    secretName: ""
+    # -- Ingress tls.crt, required if you don't have secret name.
+    crt: ""
+    # crt: "{{- .Files.Get \"tls.crt\" -}}"
+    # -- Ingress tls.key, required if you don't have secret name.
+    key: ""
+    # key: "{{- .Files.Get \"tls.key\" -}}"
+
+# -- Arbitrary sidecar containers list
+extraContainers: {}
+#   - name: your_sidecar
+#     image: gcr.io/your_image:your_tag
+#     args:
+#     resources:
+#       requests:{}
+
+# -- Arbitrary sidecar containers list for 1.29+ kubernetes
+initContainers: {}
+
+serviceAccount:
+  # -- Specifies whether a Service Account should be created, creates "sql-exporter" service account if true, unless
+  # overriden. Otherwise, set to `default` if false, and custom service account name is not provided. Check all the
+  # available parameters.
+  create: true
+  # -- References a custom Service Account if it already exists
+  # name: "sql-exporter-custom-sa"
+  # -- Annotations to add to the Service Account
+  annotations: {}
+  ## example annotations ##
+  # annotations:
+  #   iam.gke.io/gcp-service-account: my-service-account@gke.url
+  # -- Defines if token is automatically mounted to the pod after it has been created
+  # automountServiceAccountToken: false
+# Liveness and readiness probes for the application controller pods
+livenessProbe:
+  initialDelaySeconds: 5
+  timeoutSeconds: 30
+
+readinessProbe:
+  initialDelaySeconds: 5
+  timeoutSeconds: 30
+# -- Resource limits and requests for the application controller pods
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+# -- Pod labels
+podLabels: {}
+# -- Pod annotations
+podAnnotations: {}
+# -- Pod security context
+podSecurityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+# @ignored
+securityContext: {}
+# Prometheus Operator values
+serviceMonitor:
+  # -- Enable ServiceMonitor
+  enabled: true
+  # -- ServiceMonitor interval
+  interval: 15s
+  # -- ServiceMonitor path
+  path: /metrics
+  # -- ServiceMonitor scrape timeout
+  # scrapeTimeout: 10s
+  # -- ServiceMonitor metric relabelings
+  metricRelabelings: {}
+  # -- ServiceMonitor relabelings
+  relabelings: {}
+  # -- ServiceMonitor namespace override (default is .Release.Namespace)
+  namespace: ~
+# Additional env variables
+# - kind should be either Secret or ConfigMap
+# - name is the name of the Secret or ConfigMap that should be used
+# - key is the key of the object inside of a Secret or ConfigMap
+# env:
+#   SQLEXPORTER_TARGET_DSN:
+#     from:
+#       kind: Secret
+#       name: sql_exporter_secret
+#       key: CONNECTION_STRING
+# envFrom:
+#   - configMapRef:
+#       name: env-configmap
+#   - secretRef:
+#       name: env-secrets
+# extraVolumes:
+#   - name: configmap-mount
+#     volume:
+#       configMap:
+#         name: log-config
+#         items:
+#           - key: log_level
+#             path: log_level
+#     mount:
+#       readOnly: true
+#       mountPath: /etc/config
+# -- Set to true to create a config as a part of the helm chart
+createConfig: true
+# -- Set log level (info if unset)
+logLevel: debug
+# -- Set log format (logfmt if unset)
+logFormat: logfmt
+# -- Enable reload collector data handler (endpoint /reload)
+reloadEnabled: false
+# -- SQL Exporter configuration, can be a dictionary, or a template yaml string.
+config:
+  global:
+    # -- Scrape timeout
+    scrape_timeout: 10s
+    # -- Scrape timeout offset. Must be strictly positive.
+    scrape_timeout_offset: 500ms
+    # -- Interval between dropping scrape_errors_total metric: by default the metric is persistent.
+    scrape_error_drop_interval: 0s
+    # -- Minimum interval between collector runs.
+    min_interval: 0s
+    # -- Number of open connections.
+    max_connections: 3
+    # -- Number of idle connections.
+    max_idle_connections: 3
+# Target and collectors are not set so the chart is more flexible. Please configure it yourself.
+# target:
+#   data_source_name: 'sqlserver://prom_user:prom_password@dbserver1.example.com:1433'
+#   collectors: [active_connections]
+# collectors:
+#   - collector_name: active_connections
+#     metrics:
+#       - metric_name: active_connections
+#         type: gauge
+#         help: 'Active connections'
+#         key_labels:
+#           - "datname"
+#           - "usename"
+#           - "state"
+#         values:
+#           - "count"
+#         query_ref: active_connections
+#     queries:
+#       - query_name: active_connections
+#         query: |
+#                 SELECT
+#                   datname::text,
+#                   usename::text,
+#                   state::text,
+#                   COUNT(state)::float AS count
+#                 FROM pg_stat_activity
+#                 GROUP BY datname, usename, state;
+# collector_files:
+#    - "*.collector.yml"
+# ---------------------------------------------------------------------
+# -- Collector Files
+# (can be dictionaries or yaml string templates)
+# ---------------------------------------------------------------------
+# -- Collector files are mounted to /etc/sql_exporter/collectors dir
+# ---------------------------------------------------------------------
+# collectorFiles:
+#   pricing_data_freshness.collector.yml:
+#     collector_name: pricing_data_freshness
+#     metrics:
+#       - metric_name: pricing_update_time
+#         type: gauge
+#         help: 'Time when prices for a market were last updated.'
+#         key_labels:
+#           # Populated from the `market` column of each row.
+#           - Market
+#         static_labels:
+#           # Arbitrary key/value pair
+#           portfolio: income
+#         values: [LastUpdateTime]
+#         query: |
+#           SELECT Market, max(UpdateTime) AS LastUpdateTime
+#           FROM MarketPrices
+#           GROUP BY Market

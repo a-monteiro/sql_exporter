@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	packageName = "sql_exporter"
-	filename    = "drivers.go"
+	packageName string = "sql_exporter"
+	filename    string = "drivers.go"
 )
 
 var driverList = map[string][]string{
@@ -19,10 +19,11 @@ var driverList = map[string][]string{
 		"github.com/microsoft/go-mssqldb/azuread",
 	},
 	"extra": {
-		"github.com/ClickHouse/clickhouse-go",
-		"github.com/jackc/pgx/v4/stdlib",
+		"github.com/ClickHouse/clickhouse-go/v2",
+		"github.com/jackc/pgx/v5/stdlib",
 		"github.com/snowflakedb/gosnowflake",
 		"github.com/vertica/vertica-sql-go",
+		"github.com/sijms/go-ora/v2",
 	},
 	"custom": {
 		//"github.com/mithrandie/csvq-driver",

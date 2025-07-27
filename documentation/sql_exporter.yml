@@ -13,6 +13,8 @@ global:
   #
   # Must be strictly positive. The default is 500ms.
   scrape_timeout_offset: 500ms
+  # Interval between dropping scrape_errors_total metric: by default (0s) metrics are persistent.
+  scrape_error_drop_interval: 0s
   # Minimum interval between collector runs: by default (0s) collectors are executed on every scrape.
   min_interval: 0s
   # Maximum number of open connections to any one target. Metric queries will run concurrently on multiple connections,
@@ -28,12 +30,19 @@ global:
 
 # The target to monitor and the collectors to execute on it.
 target:
+  # Target name (optional). Setting this field enables extra metrics e.g. `up` and `scrape_duration` with the `target`
+  # label that are always returned on a scrape. If set, sql_exporter always returns HTTP 200 with these metrics populated
+  name: mssql_database
   # Data source name always has a URI schema that matches the driver name. In some cases (e.g. MySQL)
   # the schema gets dropped or replaced to match the driver expected DSN format.
-  data_source_name: 'sqlserver://prom_user:prom_password@dbserver1.example.com:1433'
+  data_source_name: 'sqlserver://prom_user:prom_password@dbserver1.example.com:1433/dbname'
 
   # Collectors (referenced by name) to execute on the target.
   collectors: [mssql_standard]
+
+  # In case you need to connect to a backend that only responds to a limited set of commands (e.g. pgbouncer) or
+  # a data warehouse you don't want to keep online all the time (due to the extra cost), you might want to disable `ping`
+  enable_ping: true
 
 # A collector is a named set of related metrics that are collected together. It can be referenced by name, possibly
 # along with other collectors.
@@ -52,9 +61,9 @@ collectors:
     # The result columns conceptually fall into two categories:
     #  * zero or more key columns: their values will be directly mapped to labels of the same name;
     #  * one or more value columns:
-    #     * if exactly one value column, the column name name is ignored and its value becomes the metric value
+    #     * if exactly one value column, the column name is ignored and its value becomes the metric value
     #     * with multiple value columns, a `value_label` must be defined; the column name will populate this label and
-    #       the column value will popilate the metric value.
+    #       the column value will populate the metric value.
     metrics:
       # The metric name, type and help text, as exported to /metrics.
       - metric_name: mssql_log_growths
@@ -65,6 +74,13 @@ collectors:
         key_labels:
           # Populated from the `db` column of each row.
           - db
+        static_labels:
+        # Arbitrary key/value pair
+          env: dev
+          region: europe
+        # Optional timestamp_value to point at the existing timestamp column to return a metric with an explicit
+        # timestamp.
+        # timestamp_value: CreatedAt
         # This query returns exactly one value per row, in the `counter` column.
         values: [counter]
         query: |
@@ -83,7 +99,7 @@ collectors:
         #
         # Required when multiple value columns are configured.
         value_label: operation
-        # Multiple value columns: their name is recorded in the label defined by `attrubute_label` (e.g. 
+        # Multiple value columns: their name is recorded in the label defined by `attribute_label` (e.g.
         # `operation="io_stall_read_ms"`).
         values:
           - io_stall_read
@@ -101,6 +117,19 @@ collectors:
         values:
           - io_stall
         query_ref: io_stall
+
+      # Metric with a static value to retrieve string data.
+      - metric_name: mssql_hostname
+        type: gauge
+        help: 'Database server hostname'
+        key_labels:
+          # Populated from the `hostname` column of the result.
+          - hostname
+        # Static value, always set to `1`.
+        static_value: 1
+        query: |
+          SELECT @@SERVERNAME AS hostname
+
 
     # Named queries, referenced by one or more metrics, through query_ref.
     queries:
