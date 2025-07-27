@@ -3,20 +3,23 @@ package sql_exporter
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"os"
+	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/burningalchemist/sql_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+
 	"google.golang.org/protobuf/proto"
 )
 
-const envDsnOverride = "SQLEXPORTER_TARGET_DSN"
-
-var dsnOverride = flag.String("config.data-source-name", "", "Data source name to override the value in the configuration file with.")
+var (
+	SvcRegistry        = prometheus.NewRegistry()
+	svcMetricLabels    = []string{"job", "target", "collector", "query"}
+	scrapeErrorsMetric *prometheus.CounterVec
+)
 
 // Exporter is a prometheus.Gatherer that gathers SQL metrics from targets and merges them with the default registry.
 type Exporter interface {
@@ -26,12 +29,18 @@ type Exporter interface {
 	WithContext(context.Context) Exporter
 	// Config returns the Exporter's underlying Config object.
 	Config() *config.Config
+	// UpdateTarget updates the targets field
 	UpdateTarget([]Target)
+	// SetJobFilters sets the jobFilters field
+	SetJobFilters([]string)
+	// DropErrorMetrics resets the scrape_errors_total metric
+	DropErrorMetrics()
 }
 
 type exporter struct {
-	config  *config.Config
-	targets []Target
+	config     *config.Config
+	targets    []Target
+	jobFilters []string
 
 	ctx context.Context
 }
@@ -43,20 +52,17 @@ func NewExporter(configFile string) (Exporter, error) {
 		return nil, err
 	}
 
-	if val, ok := os.LookupEnv(envDsnOverride); ok {
-		*dsnOverride = val
-	}
 	// Override the DSN if requested (and in single target mode).
-	if *dsnOverride != "" {
+	if config.DsnOverride != "" {
 		if len(c.Jobs) > 0 {
-			return nil, fmt.Errorf("the config.data-source-name flag (value %q) only applies in single target mode", *dsnOverride)
+			return nil, errors.New("the config.data-source-name flag only applies in single target mode")
 		}
-		c.Target.DSN = config.Secret(*dsnOverride)
+		c.Target.DSN = config.Secret(config.DsnOverride)
 	}
 
 	var targets []Target
 	if c.Target != nil {
-		target, err := NewTarget("", "", string(c.Target.DSN), c.Target.Collectors(), nil, c.Globals)
+		target, err := NewTarget("", c.Target.Name, "", string(c.Target.DSN), c.Target.Collectors(), nil, c.Globals, c.Target.EnablePing)
 		if err != nil {
 			return nil, err
 		}
@@ -75,18 +81,22 @@ func NewExporter(configFile string) (Exporter, error) {
 		}
 	}
 
+	scrapeErrorsMetric = registerScrapeErrorMetric()
+
 	return &exporter{
-		config:  c,
-		targets: targets,
-		ctx:     context.Background(),
+		config:     c,
+		targets:    targets,
+		jobFilters: []string{},
+		ctx:        context.Background(),
 	}, nil
 }
 
 func (e *exporter) WithContext(ctx context.Context) Exporter {
 	return &exporter{
-		config:  e.config,
-		targets: e.targets,
-		ctx:     ctx,
+		config:     e.config,
+		targets:    e.targets,
+		jobFilters: e.jobFilters,
+		ctx:        ctx,
 	}
 }
 
@@ -96,6 +106,13 @@ func (e *exporter) Gather() ([]*dto.MetricFamily, error) {
 		metricChan = make(chan Metric, capMetricChan)
 		errs       prometheus.MultiError
 	)
+
+	// Filter out jobs that are not in the jobFilters list
+	e.filterTargets(e.jobFilters)
+
+	if len(e.targets) == 0 {
+		return nil, errors.New("no targets found")
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(len(e.targets))
@@ -124,6 +141,14 @@ func (e *exporter) Gather() ([]*dto.MetricFamily, error) {
 		dtoMetric := &dto.Metric{}
 		if err := metric.Write(dtoMetric); err != nil {
 			errs = append(errs, err)
+			if err.Context() != "" {
+				ctxLabels := parseContextLog(err.Context())
+				values := make([]string, len(svcMetricLabels))
+				for i, label := range svcMetricLabels {
+					values[i] = ctxLabels[label]
+				}
+				scrapeErrorsMetric.WithLabelValues(values...).Inc()
+			}
 			continue
 		}
 		metricDesc := metric.Desc()
@@ -154,11 +179,70 @@ func (e *exporter) Gather() ([]*dto.MetricFamily, error) {
 	return result, errs
 }
 
+func (e *exporter) filterTargets(jf []string) {
+	if len(jf) > 0 {
+		var filteredTargets []Target
+		for _, target := range e.targets {
+			for _, jobFilter := range jf {
+				if jobFilter == target.JobGroup() {
+					filteredTargets = append(filteredTargets, target)
+					break
+				}
+			}
+		}
+		if len(filteredTargets) == 0 {
+			slog.Error("No targets found for job filters. Nothing to scrape.")
+		}
+		e.targets = filteredTargets
+	}
+}
+
 // Config implements Exporter.
 func (e *exporter) Config() *config.Config {
 	return e.config
 }
 
+// UpdateTarget implements Exporter.
 func (e *exporter) UpdateTarget(target []Target) {
 	e.targets = target
+}
+
+// SetJobFilters implements Exporter.
+func (e *exporter) SetJobFilters(filters []string) {
+	e.jobFilters = filters
+}
+
+// DropErrorMetrics implements Exporter.
+func (e *exporter) DropErrorMetrics() {
+	scrapeErrorsMetric.Reset()
+	slog.Debug("Dropped scrape_errors_total metric")
+}
+
+// registerScrapeErrorMetric registers the metrics for the exporter itself.
+func registerScrapeErrorMetric() *prometheus.CounterVec {
+	scrapeErrors := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "scrape_errors_total",
+		Help: "Total number of scrape errors per job, target, collector and query",
+	}, svcMetricLabels)
+	SvcRegistry.MustRegister(scrapeErrors)
+	return scrapeErrors
+}
+
+// split comma separated list of key=value pairs and return a map of key value pairs
+func parseContextLog(list string) map[string]string {
+	m := make(map[string]string)
+	for _, item := range strings.Split(list, ",") {
+		parts := strings.SplitN(item, "=", 2)
+		m[parts[0]] = parts[1]
+	}
+	return m
+}
+
+// Leading comma appears when previous parameter is undefined, which is a side-effect of running in single target mode.
+// Let's trim to avoid confusions.
+func TrimMissingCtx(logContext string) string {
+	if strings.HasPrefix(logContext, ",") {
+		logContext = strings.TrimLeft(logContext, ", ")
+	}
+	return logContext
 }

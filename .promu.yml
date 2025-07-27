@@ -1,6 +1,6 @@
 go:
     cgo: false
-    version: 1.19
+    version: 1.24
 repository:
     path: github.com/burningalchemist/sql_exporter
 build:
@@ -14,6 +14,8 @@ build:
       -X github.com/prometheus/common/version.Branch={{.Branch}}
       -X github.com/prometheus/common/version.BuildUser={{user}}@{{host}}
       -X github.com/prometheus/common/version.BuildDate={{date "20060102-15:04:05"}}
+      -s
+      -w
 tarball:
     files:
       - LICENSE
@@ -27,3 +29,4 @@ crossbuild:
         - windows/amd64
         - linux/armv7
         - linux/arm64
+        - darwin/arm64

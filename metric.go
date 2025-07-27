@@ -1,8 +1,10 @@
 package sql_exporter
 
 import (
+	"database/sql"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/burningalchemist/sql_exporter/config"
 	"github.com/burningalchemist/sql_exporter/errors"
@@ -35,9 +37,9 @@ type MetricFamily struct {
 
 // NewMetricFamily creates a new MetricFamily with the given metric config and const labels (e.g. job and instance).
 func NewMetricFamily(logContext string, mc *config.MetricConfig, constLabels []*dto.LabelPair) (*MetricFamily, errors.WithContext) {
-	logContext = fmt.Sprintf("%s, metric=%q", logContext, mc.Name)
+	logContext = TrimMissingCtx(fmt.Sprintf(`%s,metric=%s`, logContext, mc.Name))
 
-	if len(mc.Values) == 0 {
+	if len(mc.Values) == 0 && mc.StaticValue == nil {
 		return nil, errors.New(logContext, "no value column defined")
 	}
 	if len(mc.Values) > 1 && mc.ValueLabel == "" {
@@ -73,16 +75,30 @@ func NewMetricFamily(logContext string, mc *config.MetricConfig, constLabels []*
 }
 
 // Collect is the equivalent of prometheus.Collector.Collect() but takes a Query output map to populate values from.
-func (mf MetricFamily) Collect(row map[string]interface{}, ch chan<- Metric) {
+func (mf MetricFamily) Collect(row map[string]any, ch chan<- Metric) {
 	labelValues := make([]string, len(mf.labels))
 	for i, label := range mf.config.KeyLabels {
-		labelValues[i] = row[label].(string)
+		labelValues[i] = row[label].(sql.NullString).String
 	}
 	for _, v := range mf.config.Values {
 		if mf.config.ValueLabel != "" {
 			labelValues[len(labelValues)-1] = v
 		}
-		value := row[v].(float64)
+		value := row[v].(sql.NullFloat64)
+		if value.Valid {
+			metric := NewMetric(&mf, value.Float64, labelValues...)
+			if mf.config.TimestampValue == "" {
+				ch <- metric
+			} else {
+				ts := row[mf.config.TimestampValue].(sql.NullTime)
+				if ts.Valid {
+					ch <- NewMetricWithTimestamp(ts.Time, metric)
+				}
+			}
+		}
+	}
+	if mf.config.StaticValue != nil {
+		value := *mf.config.StaticValue
 		ch <- NewMetric(&mf, value, labelValues...)
 	}
 }
@@ -279,3 +295,18 @@ func NewInvalidMetric(err errors.WithContext) Metric {
 func (m invalidMetric) Desc() MetricDesc { return nil }
 
 func (m invalidMetric) Write(*dto.Metric) errors.WithContext { return m.err }
+
+type timestampedMetric struct {
+	Metric
+	t time.Time
+}
+
+func (m timestampedMetric) Write(pb *dto.Metric) errors.WithContext {
+	e := m.Metric.Write(pb)
+	pb.TimestampMs = proto.Int64(m.t.Unix()*1000 + int64(m.t.Nanosecond()/1000000))
+	return e
+}
+
+func NewMetricWithTimestamp(t time.Time, m Metric) Metric {
+	return timestampedMetric{Metric: m, t: t}
+}

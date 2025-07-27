@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/xo/dburl"
-	"k8s.io/klog/v2"
 )
 
 // OpenConnection parses a provided DSN, and opens a DB handle ensuring early termination if the context is closed
@@ -27,9 +28,14 @@ func OpenConnection(ctx context.Context, logContext, dsn string, maxConns, maxId
 		return nil, err
 	}
 
+	driver := url.Driver
+	if url.GoDriver != "" {
+		driver = url.GoDriver
+	}
+
 	// Open the DB handle in a separate goroutine so we can terminate early if the context closes.
 	go func() {
-		conn, err = sql.Open(url.Driver, url.DSN)
+		conn, err = sql.Open(driver, url.DSN)
 		close(ch)
 	}()
 
@@ -46,12 +52,7 @@ func OpenConnection(ctx context.Context, logContext, dsn string, maxConns, maxId
 	conn.SetMaxOpenConns(maxConns)
 	conn.SetConnMaxLifetime(maxConnLifetime)
 
-	if klog.V(1).Enabled() {
-		if len(logContext) > 0 {
-			logContext = fmt.Sprintf("[%s] ", logContext)
-		}
-		klog.Infof("%sDatabase handle successfully opened with '%s' driver", logContext, url.Driver)
-	}
+	slog.Debug("Database handle successfully opened", "logContext", logContext, "driver", driver)
 	return conn, nil
 }
 
@@ -80,8 +81,8 @@ func PingDB(ctx context.Context, conn *sql.DB) error {
 // if underlying url parse failed. By default it returns a raw url string in error message,
 // which most likely contains a password. It's undesired here.
 func safeParse(rawURL string) (*dburl.URL, error) {
-	parsed, err := dburl.Parse(rawURL)
-	//klog.Infof("parsed url: %v", parsed)
+
+	parsed, err := dburl.Parse(expandEnv(rawURL))
 	if err != nil {
 		if uerr := new(url.Error); errors.As(err, &uerr) {
 			return nil, uerr.Err
@@ -90,4 +91,16 @@ func safeParse(rawURL string) (*dburl.URL, error) {
 		return nil, errors.New("invalid URL")
 	}
 	return parsed, nil
+}
+
+// expandEnv falls back to the original env variable if not found for better readability
+func expandEnv(env string) string {
+	lookupFunc := func(env string) string {
+		if value, ok := os.LookupEnv(env); ok {
+			return value
+		}
+		slog.Error("Environment variable is not found, cannot expand", "env", env)
+		return fmt.Sprintf("$%s", env)
+	}
+	return os.Expand(env, lookupFunc)
 }
