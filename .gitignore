@@ -1,4 +1,6 @@
 /.project
 /.settings
+.idea/
 /sql_exporter
 /sql_exporter.yml
+test_configs/
