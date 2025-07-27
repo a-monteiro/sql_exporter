@@ -38,17 +38,17 @@ type MetricConfig struct {
 
 // RowFilter defines conditions to filter rows after query execution
 type RowFilter struct {
-	Column   string   `yaml:"column"`                 // column name to filter on
-	Operator string   `yaml:"operator"`               // "equals", "in", "not_in", "contains", "not_equals"
-	Value    string   `yaml:"value,omitempty"`        // single value for equals/not_equals/contains
-	Values   []string `yaml:"values,omitempty"`       // multiple values for in/not_in
+	Column   string   `yaml:"column"`           // column name to filter on
+	Operator string   `yaml:"operator"`         // "equals", "in", "not_in", "contains", "not_equals"
+	Value    string   `yaml:"value,omitempty"`  // single value for equals/not_equals/contains
+	Values   []string `yaml:"values,omitempty"` // multiple values for in/not_in
 }
 
 // LagCalculation defines how to calculate time lag from timestamp fields
 type LagCalculation struct {
-	SourceColumn    string `yaml:"source_column"`               // column containing the timestamp (e.g., "high_value")
-	OutputColumn    string `yaml:"output_column"`               // new column name for the lag value (e.g., "lag_seconds")
-	TimestampFormat string `yaml:"timestamp_format,omitempty"`  // format of timestamp, defaults to Trino format
+	SourceColumn    string `yaml:"source_column"`              // column containing the timestamp (e.g., "high_value")
+	OutputColumn    string `yaml:"output_column"`              // new column name for the lag value (e.g., "lag_seconds")
+	TimestampFormat string `yaml:"timestamp_format,omitempty"` // format of timestamp, defaults to Trino format
 }
 
 // ValueType returns the metric type, converted to a prometheus.ValueType.
