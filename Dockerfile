@@ -1,4 +1,4 @@
-FROM golang:1.22 AS builder
+FROM public.ecr.aws/docker/library/golang:1.23 AS builder
 
 ENV USER=app
 ENV UID=10001
